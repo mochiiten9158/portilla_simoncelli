@@ -138,29 +138,44 @@ def fit_model_by_rbase(input_csv, output_csv):
 
     df = pd.read_csv(input_csv)
 
-    # rbase_values = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8] # For positive, use [0.3, 0.4, 0.5, 0.6, 0.7, 0.8] change here!!!!
-    rbase_values = [-0.3, -0.4, -0.5, -0.6, -0.7, -0.8] # For negative, use [-0.3, -0.4, -0.5, -0.6, -0.7, -0.8]
+    rbase_values = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8] # For positive, use [0.3, 0.4, 0.5, 0.6, 0.7, 0.8] change here!!!!
+    # rbase_values = [-0.3, -0.4, -0.5, -0.6, -0.7, -0.8] # For negative, use [-0.3, -0.4, -0.5, -0.6, -0.7, -0.8]
+
+    df["rbase"] = np.where(
+        df["corr1 (Left)"].isin(rbase_values),
+        df["corr1 (Left)"],
+        df["corr2 (Right)"]
+    )
+
+    df["rv"] = np.where(
+        df["corr1 (Left)"] == df["rbase"],
+        df["corr2 (Right)"],
+        df["corr1 (Left)"]
+    )
+
+    df["delta_corr"] = np.abs(df["rbase"] - df["rv"])
 
     results = []
 
-    print("\nModel fitting: ")
+    print("\nModel fitting in progress...")
 
-    for r in rbase_values:
+    # for r in rbase_values:
+    for (participant, r), subset in df.groupby(["participant", "rbase"]):
 
-        subset = df[
-            (np.isclose(df["corr1 (Left)"], r, atol = 0.00)) |
-            (np.isclose(df["corr2 (Right)"], r, atol = 0.00))
-        ].copy()
+        # subset = df[
+        #     (np.isclose(df["corr1 (Left)"], r, atol = 0.00)) |
+        #     (np.isclose(df["corr2 (Right)"], r, atol = 0.00))
+        # ].copy()
 
-        if len(subset) < 3:
-            print(f"Skipping r={r}, too few samples")
+        if len(subset) < 1:
+            print(f"Skipping r={r}, participant={participant}, too few samples")
             continue
 
         x = subset["delta_corr"].values
         y = subset["accuracy"].values
 
         # initial guess
-        p0 = [np.log(np.median(x)), np.log(2.0)]
+        p0 = [np.log(0.2), np.log(2.0)]
 
         try:
             res = minimize(
@@ -173,24 +188,23 @@ def fit_model_by_rbase(input_csv, output_csv):
             )
 
             if not res.success:
-                print(f"Fit failed for r={r}")
+                print(f"Fit failed for r={r} participant={participant}")
                 continue
 
-            log_alpha, log_beta = res.x
-            alpha = np.exp(log_alpha)
-            beta  = np.exp(log_beta)
-
+            alpha = np.exp(res.x[0])
+            beta  = np.exp(res.x[1])
             jnd = compute_jnd(alpha, beta)
 
         except Exception:
-            print(f"Error at r={r}")
+            print(f"Error at r={r} participant={participant}")
             continue
 
-        print(f"r={r}: alpha={alpha:.4f}, beta={beta:.3f}, JND={jnd:.4f}")
+        # print(f"participant={participant}, r={r}: JND={jnd:.4f}")
 
         # save row-wise (like your Harrison output)
         for _, row in subset.iterrows():
             results.append({
+                "participant": participant,
                 "corr1": row["corr1 (Left)"],
                 "corr2": row["corr2 (Right)"],
                 "correct": row["correct"],
@@ -272,13 +286,26 @@ def fit_harrison_by_rbase(input_csv):
 
 def summarize_model(df_model_fits):
 
-    summary = (
+    # STEP 1: average within each participant × rbase
+    per_participant = (
         df_model_fits
+        .groupby(["participant", "rbase"])
+        .agg({
+            "alpha": "mean",
+            "beta": "mean",
+            "jnd": "mean"
+        })
+        .reset_index()
+    )
+
+    # STEP 2: aggregate across participants
+    summary = (
+        per_participant
         .groupby("rbase")
         .agg({
-            "alpha": "first",
-            "beta": "first",
-            "jnd": "first"
+            "alpha": "mean",
+            "beta": "mean",
+            "jnd": "mean"
         })
         .reset_index()
         .rename(columns={
@@ -367,28 +394,27 @@ def compute_model_ci(df_model):
 
     for r, subset in df_model.groupby("rbase"):
 
-        jnd = subset["jnd"].iloc[0]
-
-        # approximate variability from accuracy signal
-        acc = subset["jnd"].values
-        n = len(acc)
+        jnds = subset["jnd"].values
+        n = len(jnds)
 
         if n < 2:
             continue
-
-        std = np.std(acc, ddof=1)
+        
+        mean_jnd = np.mean(jnds)
+        std = np.std(jnds, ddof=1)
         se  = std / np.sqrt(n)
 
         # propagate rough uncertainty to JND scale
         # (simple approximation)
-        ci_lower = jnd - 1.96 * se
-        ci_upper = jnd + 1.96 * se
+        ci_lower = mean_jnd - 1.96 * se
+        ci_upper = mean_jnd + 1.96 * se
 
         results.append({
             "rbase": r,
-            "mean_jnd": jnd,
+            "mean_jnd": mean_jnd,
             "ci_lower": ci_lower,
-            "ci_upper": ci_upper
+            "ci_upper": ci_upper,
+            "n": n
         })
 
     return pd.DataFrame(results)
@@ -401,11 +427,11 @@ def compute_model_ci(df_model):
 # INPUT_CSV  = "harrison_results/scatter_negative.csv"
 # OUTPUT_CSV = "harrison_results/scatter_negative_weibull_fits_per_participant.csv"
 
-# INPUT_CSV  = "harrison_results/parallelCoordinates_positive.csv"
-# OUTPUT_CSV = "harrison_results/parallelCoordinates_positive_weibull_fits_per_participant.csv"
+INPUT_CSV  = "harrison_results/parallelCoordinates_positive.csv"
+OUTPUT_CSV = "harrison_results/parallelCoordinates_positive_weibull_fits_per_participant.csv"
 
-INPUT_CSV  = "harrison_results/parallelCoordinates_negative.csv"
-OUTPUT_CSV = "harrison_results/parallelCoordinates_negative_weibull_fits_per_participant.csv"
+# INPUT_CSV  = "harrison_results/parallelCoordinates_negative.csv"
+# OUTPUT_CSV = "harrison_results/parallelCoordinates_negative_weibull_fits_per_participant.csv"
 
 
 
@@ -416,11 +442,11 @@ OUTPUT_CSV = "harrison_results/parallelCoordinates_negative_weibull_fits_per_par
 # INPUT_CSV_MODEL = "test_pair_results_negative.csv"
 # OUTPUT_CSV_MODEL = "test_pair_weibull_fits_negative.csv"
 
-# INPUT_CSV_MODEL = "test_pair_results_pcp.csv"
-# OUTPUT_CSV_MODEL = "test_pair_weibull_fits_pcp.csv"
+INPUT_CSV_MODEL = "test_pair_results_pcp.csv"
+OUTPUT_CSV_MODEL = "test_pair_weibull_fits_pcp.csv"
 
-INPUT_CSV_MODEL = "test_pair_results_pcp_negative.csv"
-OUTPUT_CSV_MODEL = "test_pair_weibull_fits_pcp_negative.csv"
+# INPUT_CSV_MODEL = "test_pair_results_pcp_negative.csv"
+# OUTPUT_CSV_MODEL = "test_pair_weibull_fits_pcp_negative.csv"
 
 
 
@@ -437,11 +463,11 @@ OUTPUT_CSV_MODEL = "test_pair_weibull_fits_pcp_negative.csv"
 # INPUT_CSV_SVM_MODEL = "test_pair_results_svm_negative.csv"
 # OUTPUT_CSV_SVM_MODEL = "test_pair_weibull_fits_svm_negative.csv"
 
-# INPUT_CSV_SVM_MODEL = "test_pair_results_svm_pcp.csv"
-# OUTPUT_CSV_SVM_MODEL = "test_pair_weibull_fits_svm_pcp.csv"
+INPUT_CSV_SVM_MODEL = "test_pair_results_svm_pcp.csv"
+OUTPUT_CSV_SVM_MODEL = "test_pair_weibull_fits_svm_pcp.csv"
 
-INPUT_CSV_SVM_MODEL = "test_pair_results_svm_pcp_negative.csv"
-OUTPUT_CSV_SVM_MODEL = "test_pair_weibull_fits_svm_pcp_negative.csv"
+# INPUT_CSV_SVM_MODEL = "test_pair_results_svm_pcp_negative.csv"
+# OUTPUT_CSV_SVM_MODEL = "test_pair_weibull_fits_svm_pcp_negative.csv"
 
 df_result, df_diff = fit_all_participants(INPUT_CSV, OUTPUT_CSV)
 
@@ -495,8 +521,8 @@ print("SVM Model CI:\n", svm_model_ci)
 # ── load your fitted CSV ───────────────────────────────
 # df = pd.read_csv("harrison_results/scatter_positive_weibull_fits_per_participant.csv")
 # df = pd.read_csv("harrison_results/scatter_negative_weibull_fits_per_participant.csv")
-# df = pd.read_csv("harrison_results/parallelCoordinates_positive_weibull_fits_per_participant.csv")
-df = pd.read_csv("harrison_results/parallelCoordinates_negative_weibull_fits_per_participant.csv")
+df = pd.read_csv("harrison_results/parallelCoordinates_positive_weibull_fits_per_participant.csv")
+# df = pd.read_csv("harrison_results/parallelCoordinates_negative_weibull_fits_per_participant.csv")
 harrison_agg = fit_harrison_by_rbase(INPUT_CSV)
 
 
@@ -510,7 +536,7 @@ fig = make_subplots(
         "JND with 95% CI (Above)",
         "JND with 95% CI (Below)",
         "JND Difference per Participant",
-        "JND Comparison (Harrison vs LDA vs SVM)"
+        "JND Comparison (Harrison (Above) vs Harrison (Below) vs LDA)"
     )
 )
 
@@ -631,7 +657,7 @@ for r, subset in lda_model_grouped:
     beta  = subset["beta"].iloc[0]
     jnd   = subset["jnd"].iloc[0]
 
-    color_model = color_map_model[-r] # change here!!!!
+    color_model = color_map_model[r] # change here!!!!
 
     x_range = np.linspace(0, subset["delta_corr"].max() + 0.05, 200)
     y_curve = weibull(x_range, alpha, beta)
@@ -761,7 +787,7 @@ for _, row in lda_model_summary.iterrows():
     beta  = row["beta_m"]
     jnd   = row["jnd_m"]
 
-    color = color_map_model[-r] # change here!!!!
+    color = color_map_model[r] # change here!!!!
 
     x_range = np.linspace(0, 1, 200)
     y_curve = weibull(x_range, alpha, beta)
@@ -1052,7 +1078,7 @@ fig.add_trace(
 
 fig.add_trace(
     go.Scatter(
-        x=-lda_model_ci["rbase"], # change here!!!!
+        x=lda_model_ci["rbase"], # change here!!!!
         y=lda_model_ci["mean_jnd"],
         mode="markers",
         marker=dict(
@@ -1081,36 +1107,36 @@ fig.add_trace(
     row=7, col=1
 )
 
-fig.add_trace(
-    go.Scatter(
-        x=-svm_model_ci["rbase"] + offset_two, # change here!!!!
-        y=svm_model_ci["mean_jnd"],
-        mode="markers",
-        marker=dict(
-            color="blue",
-            size=8,
-            symbol="circle"
-        ),
-        customdata=np.stack(
-            (
-                svm_model_ci["rbase"],
-            ),
-            axis=-1
-        ),
-        hovertemplate=(
-            "rbase: %{customdata[0]:.2f}<br>"
-            "Mean JND: %{y:.4f}<br>"
-        ),
-        # error_y=dict(
-        #     type="data",
-        #     symmetric=False,
-        #     array=calc_ci_above["ci_plus"],
-        #     arrayminus=calc_ci_above["ci_minus"],
-        # ),
-        name="SVM Model"
-    ),
-    row=7, col=1
-)
+# fig.add_trace(
+#     go.Scatter(
+#         x=svm_model_ci["rbase"] + offset_two, # change here!!!!
+#         y=svm_model_ci["mean_jnd"],
+#         mode="markers",
+#         marker=dict(
+#             color="blue",
+#             size=8,
+#             symbol="circle"
+#         ),
+#         customdata=np.stack(
+#             (
+#                 svm_model_ci["rbase"],
+#             ),
+#             axis=-1
+#         ),
+#         hovertemplate=(
+#             "rbase: %{customdata[0]:.2f}<br>"
+#             "Mean JND: %{y:.4f}<br>"
+#         ),
+#         # error_y=dict(
+#         #     type="data",
+#         #     symmetric=False,
+#         #     array=calc_ci_above["ci_plus"],
+#         #     arrayminus=calc_ci_above["ci_minus"],
+#         # ),
+#         name="SVM Model"
+#     ),
+#     row=7, col=1
+# )
 
 
 buttons = []
@@ -1205,8 +1231,8 @@ fig.update_yaxes(range=[0, 0.35], title_text="JND", row=7, col=1)
 # fig.write_html("psychometric_plot_negative.html", auto_open=False)
 # print("Saved to psychometric_plot_negative.html") 
 
-# fig.write_html("psychometric_plot_pcp.html", auto_open=False)
-# print("Saved to psychometric_plot_pcp.html") 
+fig.write_html("psychometric_plot_pcp.html", auto_open=False)
+print("Saved to psychometric_plot_pcp.html") 
 
-fig.write_html("psychometric_plot_negative_pcp.html", auto_open=False)
-print("Saved to psychometric_plot_negative_pcp.html") 
+# fig.write_html("psychometric_plot_negative_pcp.html", auto_open=False)
+# print("Saved to psychometric_plot_negative_pcp.html")

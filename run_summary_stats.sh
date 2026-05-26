@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 STATS_BIN=./extract_stats
-INPUT_DIR=assets/harrison_pcp_negative_100
-OUT_STAT_DIR=summary_stats_harrison_negative_pcp_100
+INPUT_DIR=assets/harrison_pcp_positive_100_0.0025
+OUT_STAT_DIR=summary_stats_harrison_pcp_positive_100_0.0025
 
 mkdir -p "$OUT_STAT_DIR"
 
@@ -32,7 +32,7 @@ for img in "${files[@]}"; do
         else print "z";
     }')
 
-    out_stats="$OUT_STAT_DIR/stats_corr_${corr}_${suffix}.txt"
+    out_stats="$OUT_STAT_DIR/stats_corr_${corr}_${suffix}.csv"
 
     printf "\r[%3d/%3d] corr=%s" "$count" "$total" "$corr"
 

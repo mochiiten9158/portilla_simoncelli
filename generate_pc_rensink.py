@@ -7,7 +7,7 @@ from pathlib import Path
 from scipy.stats import truncnorm
 
 
-def generate_harrison_pcp(corr=0.0, seed=None, out_dir="assets/harrison_pcp_positive_100"):
+def generate_harrison_pcp(corr=0.0, seed=None, out_dir="assets/harrison_pcp_positive_100", count=0):
     rng = np.random.default_rng(seed)
     n = 100
 
@@ -44,14 +44,10 @@ def generate_harrison_pcp(corr=0.0, seed=None, out_dir="assets/harrison_pcp_posi
 
         y_new = y_new * sign            
 
-    def normalize_to(arr, target_mean=0.5, target_std=0.2):
-        arr = arr - arr.mean()
-        if arr.std() > 1e-9:
-            arr = arr / arr.std()
-        return arr * target_std + target_mean
+    current_std = x.std()
 
-    x_final = normalize_to(x)
-    y_final = normalize_to(y_new)
+    x_final = (x / current_std) * 0.2 + 0.5
+    y_final = (y_new / current_std) * 0.2 + 0.5
 
     # PCP rendering
     # Two vertical axes at horizontal positions 0 and 1.
@@ -66,7 +62,7 @@ def generate_harrison_pcp(corr=0.0, seed=None, out_dir="assets/harrison_pcp_posi
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    filename = out_dir / f"pcp_harrison_{n}_{r:.4f}_{tag}.png"
+    filename = out_dir / f"{count}_{r:.4f}.png"
 
     fig, ax = plt.subplots(figsize=(3, 3), dpi=100)
     plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
@@ -95,9 +91,9 @@ def generate_harrison_pcp(corr=0.0, seed=None, out_dir="assets/harrison_pcp_posi
     fig.savefig(filename, dpi=100, bbox_inches=None, pad_inches=0)
     plt.close(fig)
 
-    print(f"Saved: {filename}  "
-          f"(target r={r:.4f}, "
-          f"achieved r={np.corrcoef(x_final, y_final)[0,1]:.4f})")
+    # print(f"Saved: {filename}  "
+    #       f"(target r={r:.4f}, "
+    #       f"achieved r={np.corrcoef(x_final, y_final)[0,1]:.4f})")
     return filename
 
 
@@ -107,11 +103,11 @@ def main():
 
     for r in corrs_positive:
         generate_harrison_pcp(corr=r, seed=None,
-                               out_dir="assets/harrison_pcp_positive_100_0.0025")
+                               out_dir="assets/harrison_pcp_positive_100_training")
 
     for r in corrs_negative:
         generate_harrison_pcp(corr=r, seed=None,
-                               out_dir="assets/harrison_pcp_negative_100_0.0025")
+                               out_dir="assets/harrison_pcp_negative_100_training")
 
 
 if __name__ == "__main__":

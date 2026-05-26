@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <cstdio>
 
 #include "src/analysis.h"
 #include "src/ps_lib.h"
@@ -23,59 +24,92 @@ void write_statistics_to_file(statsStruct stats, paramsStruct params, int nz, co
     int N_pyr   = params.N_pyr;
     int N_steer = params.N_steer;
 
+    // Helper lambda to write values with commas
+    bool first_val = true;
+    auto write_val = [&](double value){
+        if (!first_val) {
+            fprintf(fp, ", ");
+        }
+        fprintf(fp, "%f", value);
+        first_val = false;
+    };
+
     /* ------------------------------------------------------------------ */
     /* Low-band skewness and kurtosis (one line per scale)                 */
     /* ------------------------------------------------------------------ */
     //Supposed to be 10 parameters in original PS model
     //2(N_pyr + 1) = 2(4+1) = 10
-    fprintf(fp, "Low-band skewness and kurtosis\n");
-    for (i = 0; i < 1+N_pyr; i++) {
+    // fprintf(fp, "Low-band skewness and kurtosis\n");
+    // for (i = 0; i < N_pyr; i++) {
+    //     for (l = 0; l < nz; l++) {
+    //         fprintf(fp, " %f %f,", 
+    //             stats.skewLow[i + (1 + N_pyr) * l],
+    //             stats.kurtLow[i + (1 + N_pyr) * l]);
+    //     }
+    //     fprintf(fp, "\n");
+    // }
+    // fprintf(fp, "\n");
+
+    for (i = 0; i < N_pyr; i++) {
         for (l = 0; l < nz; l++) {
-            fprintf(fp, " %f %f,", 
-                stats.skewLow[i + (1 + N_pyr) * l],
-                stats.kurtLow[i + (1 + N_pyr) * l]);
+            write_val(stats.skewLow[i + (1 + N_pyr) * l]);
+            write_val(stats.kurtLow[i + (1 + N_pyr) * l]);
         }
-        fprintf(fp, "\n");
     }
-    fprintf(fp, "\n");
 
     /* ------------------------------------------------------------------ */
     /* High-band variance                                                  */
     /* ------------------------------------------------------------------ */
     //Same as original PS model = 1 parameter
-    fprintf(fp, "High-band variance\n");
+    // fprintf(fp, "High-band variance\n");
+    // for (l = 0; l < nz; l++) {
+    //     fprintf(fp, " %f,", stats.varHigh[l]);
+    // }
+    // fprintf(fp, "\n\n");
+
     for (l = 0; l < nz; l++) {
-        fprintf(fp, " %f,", stats.varHigh[l]);
+        write_val(stats.varHigh[l]);
     }
-    fprintf(fp, "\n\n");
 
     /* ------------------------------------------------------------------ */
     /* Pixel statistics (min max mean var skew kurt)                       */
     /* ------------------------------------------------------------------ */
     //Same as original PS model = 6 parameters
-    fprintf(fp,
-        "Skewness, kurtosis, variance, mean, maximum and minimum "
-        "of the reconstructed texture\n");
+    // fprintf(fp,
+    //     "Skewness, kurtosis, variance, mean, maximum and minimum "
+    //     "of the reconstructed texture\n");
+    // for (l = 0; l < nz; l++) {
+    //     for (i = 0; i < 6; i++){
+    //         fprintf(fp, " %f", stats.pixelStats[i + N_PIXELSTATS*l]);
+    //     }
+    // }
+    // fprintf(fp, "\n\n");
+
     for (l = 0; l < nz; l++) {
         for (i = 0; i < 6; i++){
-            fprintf(fp, " %f", stats.pixelStats[i + N_PIXELSTATS*l]);
+            write_val(stats.pixelStats[i + N_PIXELSTATS * l]);
         }
     }
-    fprintf(fp, "\n\n");
 
     /* ------------------------------------------------------------------ */
     /* Auto-correlations of low-frequency bands (one scale per line)       */
     /* ------------------------------------------------------------------ */
     //Right now, 49 x 4 = 196 parameters (Na*Na = 7*7 = 49 auto-correlation values per scale, and N_pyr = 4 scales)
     //Supposed to be ((N_pyr + 1) * ((Na * Na) + 1)/2) = 25 * 5 = 125 parameters in original PS model
-    fprintf(fp, "Auto-correlations of the low-frequency bands at each scale\n");
-    for (i = 0; i < N_pyr; i++) { // different here
+    // fprintf(fp, "Auto-correlations of the low-frequency bands at each scale\n");
+    // for (i = 0; i < N_pyr; i++) { // different here
+    //     for (l = 0; l < Na * Na * nz; l++) {
+    //         fprintf(fp, " %f", stats.autoCorLow[i][l]);
+    //     }
+    //     fprintf(fp, ",\n");
+    // }
+    // fprintf(fp, "\n");
+
+    for (i = 0; i < N_pyr; i++) { 
         for (l = 0; l < Na * Na * nz; l++) {
-            fprintf(fp, " %f", stats.autoCorLow[i][l]);
+            write_val(stats.autoCorLow[i][l]);
         }
-        fprintf(fp, ",\n");
     }
-    fprintf(fp, "\n");
 
     /* ------------------------------------------------------------------ */
     /* Auto-correlations of magnitude of oriented subbands                 */
@@ -84,68 +118,96 @@ void write_statistics_to_file(statsStruct stats, paramsStruct params, int nz, co
     // Right now 49 x 12 = 588 parameters (Na*Na = 7*7 = 49 auto-correlation values per oriented sub-band, and N_pyr * N_steer = 4 * 4 = 16 oriented sub-bands)
     // But we ignore the last 4 because it is the residual low-pass band, so 49 x 12 = 588 parameters
     // Supposed to be N_pyr * N_steer * ((Na * Na + 1)/2) = 4 * 4 * 25 = 25 * 16 = 400
-    fprintf(fp, "Auto-correlations of the modulus of each oriented sub-band\n");
+    // fprintf(fp, "Auto-correlations of the modulus of each oriented sub-band\n");
+    // for (i = 0; i < N_pyr - 1; i++) {
+    //     for (j = 0; j < N_steer; j++) {
+    //         ind = j + i * N_steer;
+    //         for (l = 0; l < Na * Na * nz; l++) {
+    //             fprintf(fp, " %f", stats.autoCorMag[ind][l]);
+    //         }
+    //         fprintf(fp, ",\n");
+    //     }
+    // }
+    // fprintf(fp, "\n");
+
     for (i = 0; i < N_pyr - 1; i++) {
         for (j = 0; j < N_steer; j++) {
             ind = j + i * N_steer;
             for (l = 0; l < Na * Na * nz; l++) {
-                fprintf(fp, " %f", stats.autoCorMag[ind][l]);
+                write_val(stats.autoCorMag[ind][l]);
             }
-            fprintf(fp, ",\n");
         }
     }
-    fprintf(fp, "\n");
 
     /* ------------------------------------------------------------------ */
     /* Cousin magnitude correlations (QxQ, one scale per block)            */
     /* ------------------------------------------------------------------ */
     // Right now 4 * 8 = 32 parameters (N_pyr - 2 = 4 - 2 = 2 scales, and Q = N_steer * nz = 4 * 1 = 4 orientations per scale, so QxQ = 16 values per scale, and 16 x 2 = 32 parameters)
     // Supposed to be N_pyr * (N_steer(N_steer - 1)/2) = 4 * (4*3/2) = 4 * 6 = 24 parameters in original PS model
-    fprintf(fp,
-        "Pairwise cross-correlations of the modulus of all oriented "
-        "sub-bands at the same scale (size QxQ)\n");
-    for (i = 0; i < N_pyr - 1; i++) { // different here
-        for (l = 0; l < N_steer * N_steer * nz * nz; l++) {
-            fprintf(fp, " %f", stats.cousinMagCor[i][l]);
-        }
-        fprintf(fp, ",\n");
-    }
+    // fprintf(fp,
+    //     "Pairwise cross-correlations of the modulus of all oriented "
+    //     "sub-bands at the same scale (size QxQ)\n");
+    // for (i = 0; i < N_pyr - 2; i++) { // different here
+    //     for (l = 0; l < N_steer * N_steer * nz * nz; l++) {
+    //         fprintf(fp, " %f", stats.cousinMagCor[i][l]);
+    //     }
+    //     fprintf(fp, ",\n");
+    // }
     
-    fprintf(fp, "\n");
+    // fprintf(fp, "\n");
+
+    for (i = 0; i < N_pyr - 2; i++) { 
+        for (l = 0; l < N_steer * N_steer * nz * nz; l++) {
+            write_val(stats.cousinMagCor[i][l]);
+        }
+    }
 
     /* ------------------------------------------------------------------ */
     /* Parent magnitude correlations                                      */
     /* ------------------------------------------------------------------ */
     // Right now 4 * 8 = 32 parameters (N_pyr - 2 = 4 - 2 = 2 scales, and Q = N_steer * nz = 4 * 1 = 4 orientations per scale, so QxQ = 16 values per scale, and 16 x 2 = 32 parameters)
     // Supposed to be N_steer * N_steer * (N_pyr - 1) = 4 * 4 * (4 - 1) = 4 * 4 * 3 = 48 parameters in original PS model
-    fprintf(fp,
-        "Cross-correlations of the modulus of all oriented sub-bands "
-        "with all oriented sub-bands at the coarser scale (size QxQ)\n");
-    for (i = 0; i < N_pyr - 2; i++) { // different here
+    // fprintf(fp,
+    //     "Cross-correlations of the modulus of all oriented sub-bands "
+    //     "with all oriented sub-bands at the coarser scale (size QxQ)\n");
+    // for (i = 0; i < N_pyr - 2; i++) { // different here
+    //     for (l = 0; l < N_steer * N_steer * nz * nz; l++) {
+    //         fprintf(fp, " %f", stats.parentMagCor[i][l]);
+    //     }
+    //     fprintf(fp, ",\n");
+    // }
+    // fprintf(fp, "\n");
+
+    for (i = 0; i < N_pyr - 2; i++) { 
         for (l = 0; l < N_steer * N_steer * nz * nz; l++) {
-            fprintf(fp, " %f", stats.parentMagCor[i][l]);
+            write_val(stats.parentMagCor[i][l]);
         }
-        fprintf(fp, ",\n");
     }
-    fprintf(fp, "\n");
 
     /* ------------------------------------------------------------------ */
     /* Parent real correlations (Q x 2Q, one row per orientation)          */
     /* ------------------------------------------------------------------ */
     // Right now 8 * 8 = 64 parameters (N_pyr - 2 = 4 - 2 = 2 scales, and Q = N_steer * nz = 4 * 1 = 4 orientations per scale, so Qx2Q = 32 values per scale, and 16 x 2 = 64 parameters)
     // Supposed to be 2 * N_steer * N_steer * (N_pyr - 1) = 2 * 4 * 4 * (4 - 1) = 2 * 4 * 4 * 3 = 96 parameters in original PS model
-    fprintf(fp,
-        "Cross-correlations of the real part of each oriented sub-band "
-        "with both the real and imaginary part of all phase-doubled "
-        "oriented sub-bands at the next coarser scale (Q matrices of size 1x2Q, which are computed and stored in a matrix of size Qx2Q)\n");
+    // fprintf(fp,
+    //     "Cross-correlations of the real part of each oriented sub-band "
+    //     "with both the real and imaginary part of all phase-doubled "
+    //     "oriented sub-bands at the next coarser scale (Q matrices of size 1x2Q, which are computed and stored in a matrix of size Qx2Q)\n");
 
-    for (i = 0; i < N_pyr - 2; i++) { // different here
+    // for (i = 0; i < N_pyr - 2; i++) { // different here
+    //     for (l = 0; l < 2 * N_steer * N_steer * nz * nz; l++) {
+    //         fprintf(fp, " %f", stats.parentRealCor[i][l]);
+    //     }
+    //     fprintf(fp, ",\n");
+    // }
+
+    for (i = 0; i < N_pyr - 2; i++) { 
         for (l = 0; l < 2 * N_steer * N_steer * nz * nz; l++) {
-            fprintf(fp, " %f", stats.parentRealCor[i][l]);
+            write_val(stats.parentRealCor[i][l]);
         }
-        fprintf(fp, ",\n");
     }
 
+    fprintf(fp, "\n");
     fclose(fp);
     printf("Statistics successfully written to %s\n", filename);
 }
